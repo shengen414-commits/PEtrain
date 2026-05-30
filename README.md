@@ -87,11 +87,11 @@ pip install -r requirements.txt
 3. 运行 Python 引擎
 打开管理员权限的终端，执行以下命令启动项目：
 
-PowerShell
 
 # 高级配置：指定 COM 端口，并设置按一次 w 键连发 600 秒（10分钟）
 python main.py data\run.gpx --serial-port COM6,COM8 --burst-seconds 600
 启动后，浏览器会自动打开 http://127.0.0.1:5000/ 显示 Web 预览看板。
+(指定 COM 端口，并设置按一次 w 键连发 600 秒（10分钟）)
 
 4. 手机端接收与环境伪装
 宿主机配置：下载并打开 BluetoothGNSS等桥接软件。在手机的“开发者选项”中将其设为“模拟位置信息应用”。在 App 内选择电脑蓝牙并点击 Start。
@@ -107,7 +107,7 @@ python main.py data\run.gpx --serial-port COM6,COM8 --burst-seconds 600
 
 检查 Windows 是否正确创建了“传入”COM 端口。
 
-确保 Android App 中点击了 Start 进行主动连接。如果连接闪退，请尝试更换其他桥接 App，如 Bluetooth GNSS。
+确保手机端蓝牙接受GPS的软件中点击了 Start 进行主动连接。如果连接闪退，请尝试更换其他桥接 App，如 Bluetooth GNSS。
 
 小程序显示真实位置或定位失败：
 
