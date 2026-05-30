@@ -88,7 +88,7 @@ pip install -r requirements.txt
 打开管理员权限的终端，执行以下命令启动项目：
 
 
-# 高级配置：指定 COM 端口，并设置按一次 w 键连发 600 秒（10分钟）
+#### 高级配置：指定 COM 端口，并设置按一次 w 键连发 600 秒（10分钟）
 python main.py data\run.gpx --serial-port COM6,COM8 --burst-seconds 600
 启动后，浏览器会自动打开 http://127.0.0.1:5000/ 显示 Web 预览看板。
 (指定 COM 端口，并设置按一次 w 键连发 600 秒（10分钟）)
@@ -102,7 +102,7 @@ python main.py data\run.gpx --serial-port COM6,COM8 --burst-seconds 600
 
 开始运动：在沙盒环境内的微信小程序中点击“开始”，并在电脑端按下 w 键触发模拟。
 
-⚠️ 常见问题与风控排查
+#### ⚠️ 常见问题与风控排查
 手机 App 接收不到定位：
 
 检查 Windows 是否正确创建了“传入”COM 端口。
