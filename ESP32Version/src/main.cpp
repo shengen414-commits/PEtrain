@@ -138,14 +138,16 @@ void tickOneHz() {
   }
   previousClientState = hasClient;
 
-  if (hasClient && nextIndex < TRACK_POINT_COUNT) {
+  if (hasClient && nextIndex >= TRACK_POINT_COUNT) {
+    nextIndex = 0;
+    Serial.println("[playback] Track finished. Looping back to start.");
+  }
+
+  if (hasClient) {
     displayIndex = nextIndex;
     sendPoint(displayIndex);
     nextIndex++;
     Serial.printf("[playback] %u/%u\n", displayIndex + 1, TRACK_POINT_COUNT);
-  } else if (hasClient) {
-    sendPoint(displayIndex);
-    Serial.println("[playback] Track finished. Holding last point.");
   } else {
     sendPoint(displayIndex);
   }
