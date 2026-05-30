@@ -4,6 +4,12 @@ __pycache__/
 generated/
 *.log
 
+data/*.gpx
+*.gpx
+*.gpx.bin_tmp
+
+
+PadVersion/
 
 
 .env

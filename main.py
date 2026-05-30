@@ -14,17 +14,45 @@ from web_server import generate_monitor_html, start_web_server
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="基于真实 GPX 轨迹的蓝牙运动模拟与可视化系统")
-    parser.add_argument("gpx", help="本地 GPX 文件路径")
+    parser.add_argument(
+        "gpx",
+        nargs="?",
+        default="data/run.gpx",
+        help="本地 GPX 文件路径；默认 data/run.gpx",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Flask 监听地址，默认 127.0.0.1")
     parser.add_argument("--port", type=int, default=5000, help="Flask 端口，默认 5000")
-    parser.add_argument("--bluetooth-backend", choices=["serial", "rfcomm"], default="serial", help="蓝牙发送后端，Windows 默认 serial 虚拟串口")
-    parser.add_argument("--serial-port", default="auto", help="Windows 入站蓝牙虚拟串口，默认 auto 自动打开所有入站 SPP COM 口；也可填 COM6 或 COM6,COM24")
+    parser.add_argument(
+        "--bluetooth-backend",
+        choices=["serial", "rfcomm"],
+        default="serial",
+        help="蓝牙发送后端；Windows 默认 serial 虚拟串口",
+    )
+    parser.add_argument(
+        "--serial-port",
+        default="COM6,COM8",
+        help="Windows 入站蓝牙虚拟串口，默认同时发送到 COM6,COM8；也可填 auto 或 COM6,8",
+    )
     parser.add_argument("--serial-baudrate", type=int, default=9600, help="虚拟串口波特率，默认 9600")
-    parser.add_argument("--rfcomm-channel", type=int, default=1, help="蓝牙 RFCOMM channel，默认 1；若被系统拒绝会自动扫描 3-30")
-    parser.add_argument("--bt-bind-address", default="", help="本机蓝牙地址，默认空字符串表示自动/任意地址")
-    parser.add_argument("--burst-seconds", type=int, default=600, help="每次按 w 后连续发送秒数，默认 600")
-    parser.add_argument("--pause-on-send-fail", action="store_true", help="蓝牙/串口发送失败时暂停播放并不推进游标")
-    parser.add_argument("--no-idle-heartbeat", action="store_true", help="暂停状态下不重复发送当前位置 NMEA")
+    parser.add_argument("--rfcomm-channel", type=int, default=1, help="蓝牙 RFCOMM channel，默认 1")
+    parser.add_argument("--bt-bind-address", default="", help="本机蓝牙地址，默认自动/任意地址")
+    parser.add_argument(
+        "--burst-seconds",
+        type=int,
+        default=600,
+        help="手动按 w 模式下每次连续发送秒数，默认 600",
+    )
+    parser.add_argument(
+        "--manual-trigger",
+        action="store_true",
+        help="恢复旧行为：启动后等待按 w，再发送一段数据",
+    )
+    parser.add_argument(
+        "--pause-on-send-fail",
+        action="store_true",
+        help="手动按 w 模式下，蓝牙/串口发送失败时暂停本段播放且不推进游标",
+    )
+    parser.add_argument("--no-idle-heartbeat", action="store_true", help="手动模式暂停时不重复发送当前位置 NMEA")
     parser.add_argument("--generated-dir", default="generated", help="Folium HTML 输出目录")
     parser.add_argument("--no-browser", action="store_true", help="启动后不自动打开浏览器")
     parser.add_argument("--no-bluetooth", action="store_true", help="不启动蓝牙，仅运行轨迹看板和游标调度")
@@ -62,8 +90,6 @@ def main() -> None:
         pause_on_send_fail=args.pause_on_send_fail,
         idle_heartbeat=not args.no_idle_heartbeat,
     )
-    controller.start_keyboard_listener()
-    controller.start_idle_heartbeat()
 
     html_path = Path(args.generated_dir) / "index.html"
     resolved_html_path = generate_monitor_html(dense_points, html_path)
@@ -75,8 +101,18 @@ def main() -> None:
         open_browser=not args.no_browser,
     )
 
-    print(f"[main] Web 看板: http://{args.host}:{args.port}/")
-    print("[main] 按 w 发送 600 秒 NMEA 数据；Ctrl+C 退出。")
+    if args.manual_trigger:
+        controller.start_keyboard_listener()
+        controller.start_idle_heartbeat()
+        print(f"[main] Web 看板: http://{args.host}:{args.port}/")
+        print("[main] 手动模式：按 w 发送一段 NMEA 数据；Ctrl+C 退出。")
+    else:
+        controller.start_continuous_playback(wait_for_success=bluetooth_sender is not None)
+        print(f"[main] Web 看板: http://{args.host}:{args.port}/")
+        print(
+            "[main] 自动循环模式：手机蓝牙串口真正接收成功后开始推进轨迹，"
+            "播到结尾会自动回到起点；Ctrl+C 退出。"
+        )
 
     stop_requested = False
 

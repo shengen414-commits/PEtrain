@@ -173,7 +173,15 @@ class BluetoothSerialPort:
         value = self.port.strip()
         if not value or value.lower() == "auto":
             return []
-        return [part.strip().upper() for part in re.split(r"[,;]", value) if part.strip()]
+        ports: list[str] = []
+        for part in re.split(r"[,;]", value):
+            normalized = part.strip().upper()
+            if not normalized:
+                continue
+            if normalized.isdigit():
+                normalized = f"COM{normalized}"
+            ports.append(normalized)
+        return sorted(set(ports), key=_com_sort_key)
 
     def _log_status(self, *, force: bool) -> None:
         now = time.monotonic()

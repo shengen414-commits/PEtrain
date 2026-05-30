@@ -13,7 +13,7 @@ class PointSender(Protocol):
 
 
 class PlaybackController:
-    """Thread-safe cursor and 20-second burst scheduler."""
+    """Thread-safe cursor scheduler for manual bursts and continuous playback."""
 
     def __init__(
         self,
@@ -31,14 +31,17 @@ class PlaybackController:
         self.burst_seconds = burst_seconds
         self.pause_on_send_fail = pause_on_send_fail
         self.idle_heartbeat = idle_heartbeat
+
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
         self._is_playing = False
         self._next_index = 0
         self._display_index = 0
         self._last_trigger_time = 0.0
+
         self._keyboard_thread: threading.Thread | None = None
         self._burst_thread: threading.Thread | None = None
+        self._continuous_thread: threading.Thread | None = None
         self._heartbeat_thread: threading.Thread | None = None
 
     def start_keyboard_listener(self) -> None:
@@ -55,6 +58,24 @@ class PlaybackController:
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, name="NMEAHeartbeat", daemon=True)
         self._heartbeat_thread.start()
 
+    def start_continuous_playback(self, *, wait_for_success: bool = True) -> None:
+        """Start a 1Hz endless loop.
+
+        When wait_for_success is true, the cursor does not advance until the
+        sender reports at least one successful write. This matches Windows
+        Bluetooth COM behavior: the COM handle can be open before the phone's
+        SPP data channel is actually ready.
+        """
+        if self._continuous_thread and self._continuous_thread.is_alive():
+            return
+        self._continuous_thread = threading.Thread(
+            target=self._run_continuous,
+            kwargs={"wait_for_success": wait_for_success},
+            name="NMEAContinuousPlayback",
+            daemon=True,
+        )
+        self._continuous_thread.start()
+
     def stop(self) -> None:
         self._stop_event.set()
 
@@ -66,10 +87,10 @@ class PlaybackController:
             self._last_trigger_time = now
 
             if self._is_playing:
-                print("[playback] 正在播放 20 秒数据段，忽略重复触发。")
+                print("[playback] 正在播放数据段，忽略重复触发。")
                 return False
             if self._next_index >= len(self.points):
-                print("[playback] 游标已达末尾，触发无限循环，重置回起点。")
+                print("[playback] 游标已到末尾，重置回起点。")
                 self._next_index = 0
                 self._display_index = 0
 
@@ -113,9 +134,9 @@ class PlaybackController:
 
                 with self._lock:
                     if self._next_index >= len(self.points):
-                        print("[playback] 播放到底，无缝衔接回起点。")
-                        self._next_index = 0  # 核心修改：不 break，直接重置游标继续跑
-                    
+                        print("[playback] 播放到底，自动回到起点继续。")
+                        self._next_index = 0
+
                     point = self.points[self._next_index]
                     sent_index = self._next_index
 
@@ -123,7 +144,7 @@ class PlaybackController:
                     sent = self.sender.send_point(point)
                     if not sent:
                         if self.pause_on_send_fail:
-                            print("[playback] 发送失败，暂停本段播放；游标不前进，连接恢复后可再次按 w。")
+                            print("[playback] 发送失败，暂停本段播放；游标不前进。")
                             break
                         print("[playback] 蓝牙未送达，继续推进本地轨迹和看板。")
 
@@ -131,21 +152,51 @@ class PlaybackController:
                     self._display_index = sent_index
                     self._next_index = sent_index + 1
 
-                print(
-                    "[playback] "
-                    f"{sent_index + 1}/{len(self.points)} "
-                    f"lat={point.lat:.7f}, lon={point.lon:.7f}, "
-                    f"speed={point.speed_mps * 3.6:.2f}km/h"
-                )
-
-                next_tick = start_monotonic + second + 1
-                sleep_seconds = next_tick - time.monotonic()
-                if sleep_seconds > 0:
-                    time.sleep(sleep_seconds)
+                self._log_point(sent_index, point)
+                self._sleep_until(start_monotonic + second + 1)
         finally:
             with self._lock:
                 self._is_playing = False
-            print("[playback] 20 秒数据段结束，等待下一次按 w。")
+            print("[playback] 数据段结束，等待下一次按 w。")
+
+    def _run_continuous(self, *, wait_for_success: bool) -> None:
+        print("[playback] 自动循环播放已启动，按 1Hz 连续发送 NMEA。")
+        next_tick = time.monotonic()
+
+        while not self._stop_event.is_set():
+            with self._lock:
+                if self._next_index >= len(self.points):
+                    print("[playback] 轨迹已到结尾，自动回到起点循环。")
+                    self._next_index = 0
+                    self._display_index = 0
+
+                point = self.points[self._next_index]
+                sent_index = self._next_index
+                self._is_playing = True
+
+            sent = True
+            if self.sender:
+                sent = self.sender.send_point(point)
+
+            if sent or not wait_for_success:
+                with self._lock:
+                    self._display_index = sent_index
+                    self._next_index = sent_index + 1
+                self._log_point(sent_index, point)
+            else:
+                with self._lock:
+                    self._display_index = sent_index
+                print("[playback] 等待手机蓝牙串口接收成功，当前游标暂不推进。")
+
+            next_tick += 1.0
+            sleep_seconds = next_tick - time.monotonic()
+            if sleep_seconds <= 0:
+                next_tick = time.monotonic()
+                continue
+            time.sleep(sleep_seconds)
+
+        with self._lock:
+            self._is_playing = False
 
     def _keyboard_loop(self) -> None:
         try:
@@ -156,12 +207,12 @@ class PlaybackController:
 
         try:
             keyboard.on_press_key("w", lambda _event: self.trigger_burst(), suppress=False)
-            print("[keyboard] 已监听按键 w：每次触发发送 20 秒 NMEA 数据。")
+            print("[keyboard] 已监听按键 w：每次触发发送一段 NMEA 数据。")
             while not self._stop_event.is_set():
                 time.sleep(0.2)
-        except Exception as exc:  # keyboard may need admin/root permissions.
+        except Exception as exc:
             print(f"[keyboard] 启动键盘监听失败: {exc}")
-            print("[keyboard] Windows 请尝试管理员 PowerShell；Linux 通常需要 sudo 运行。")
+            print("[keyboard] Windows 可尝试管理员 PowerShell；Linux 通常需要 sudo。")
         finally:
             try:
                 keyboard.unhook_all()
@@ -180,3 +231,16 @@ class PlaybackController:
                 self.sender.send_point(point)
 
             time.sleep(1.0)
+
+    def _log_point(self, index: int, point: TrackPoint) -> None:
+        print(
+            "[playback] "
+            f"{index + 1}/{len(self.points)} "
+            f"lat={point.lat:.7f}, lon={point.lon:.7f}, "
+            f"speed={point.speed_mps * 3.6:.2f}km/h"
+        )
+
+    def _sleep_until(self, target_monotonic: float) -> None:
+        sleep_seconds = target_monotonic - time.monotonic()
+        if sleep_seconds > 0:
+            time.sleep(sleep_seconds)

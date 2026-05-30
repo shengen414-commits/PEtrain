@@ -12,7 +12,7 @@
 ##### windows端-蓝牙设置里开端口，脚本根据gpx发送模拟定位信息
     -配置 Windows 蓝牙入站端口，记住端口号
     -根据requirements.txt装用到的库
-    -电脑端装好所有环境后运行python main.py data\run.gpx --serial-port COM6 --burst-seconds 600
+    -电脑端装好所有环境后运行python main.py data\run.gpx --serial-port COM6,COM8 --burst-seconds 600
 
 ##### 手机端-BluetoothGNSS接收，虚拟机内运行需要定位的软件，读取BluetoothGNSS软件传来的模拟定位
     -GooglePlay下载BluetoothGNSS、光速虚拟机
@@ -82,7 +82,7 @@ pip install -r requirements.txt
 
 点击 添加，选择 “传入(设备启动连接)”。
 
-系统会自动生成一个端口号（如 COM6），记下它。
+系统会自动生成端口号（如 COM6、COM8），记下需要同时发送的入站端口。
 
 3. 运行 Python 引擎
 打开管理员权限的终端，执行以下命令启动项目：
@@ -90,7 +90,7 @@ pip install -r requirements.txt
 PowerShell
 
 # 高级配置：指定 COM 端口，并设置按一次 w 键连发 600 秒（10分钟）
-python main.py data\run.gpx --serial-port COM6 --burst-seconds 600
+python main.py data\run.gpx --serial-port COM6,COM8 --burst-seconds 600
 启动后，浏览器会自动打开 http://127.0.0.1:5000/ 显示 Web 预览看板。
 
 4. 手机端接收与环境伪装
@@ -114,4 +114,3 @@ python main.py data\run.gpx --serial-port COM6 --burst-seconds 600
 宿主机系统必须关闭“Wi-Fi 扫描”和“蓝牙扫描”。
 
 虚拟机必须拥有“精确位置”权限。
-
